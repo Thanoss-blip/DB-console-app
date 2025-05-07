@@ -1,0 +1,446 @@
+import psycopg2
+from prettytable import PrettyTable
+
+def choose_mode_and_table():
+    print("Уважаемый пользователь! Выбери режим работы с БД")
+    print("1) получение данных")
+    print("2) добавление данных")
+    print("3) редактирование данных")
+    print("4) удаление данных")
+    print("5) аналитический запрос из функциональных требований")
+    print("0) - Выход")
+    print("В выборе напиши ТОЛЬКО число (1, 2, 3, 4, 5 или 0)")
+    mode = int(input())
+    while mode not in [0, 1, 2, 3, 4, 5]:
+        print("В выборе напиши ТОЛЬКО число (0, 1, 2, 3 или 4)")
+        mode = int(input())
+    if mode != 0 and mode != 5:
+        print("Выберете одну из двух таблиц для работы с данными:")
+        print("1) продукты (products)")
+        print("2) поставщики (providers)")
+        print("В выборе напиши ТОЛЬКО число (1 или 2)")
+        table = int(input())
+        while table not in [1, 2]:
+            print("В выборе напиши ТОЛЬКО число (1, 2)")
+            table = int(input())
+    elif mode == 0:
+        table = -1
+    else:
+        print("Выберете запрос:")
+        print("1) Первые n товаров среди товаров с ценой, не нижк a, и не выше b, отсортированных по возрастанию или по убыванию")
+        print("2) список товаров, заказанных клиентом с определённым id, их цена и количество")
+        print("В выборе напиши ТОЛЬКО число (1 или 2)")
+        table = int(input())
+        while table not in [1, 2]:
+            print("В выборе напиши ТОЛЬКО число (1, 2)")
+            table = int(input())
+    return (mode, table)
+
+def read_data(table, cur):
+    if table == 1:
+        cur.execute('''
+SELECT
+        IDPRODUCT,
+	PRODUCTNAME,
+	PRICE,
+	QUANTITY_IN_STOCK,
+	PROVIDERNAME
+FROM
+	PRODUCTS
+	LEFT JOIN PROVIDERS ON PRODUCTS.IDPROVIDER = PROVIDERS.IDPROVIDER
+''')
+    elif table == 2:
+       cur.execute('''
+SELECT
+        IDPROVIDER,
+
+	PROVIDERNAME
+FROM
+	PROVIDERS
+''')
+    return cur.fetchall(), [desc[0] for desc in cur.description]
+
+def precreate_data(table, cur):
+    if table == 1:
+        print("Сначала введите id поставщика, который вы хотите соотнести с новой записью")
+        provider_id = int(input())
+        provider = check_provider_id(cur, provider_id)
+        while provider == None:
+            print("Поставщика с таким id не существует. Введите другой id")
+            provider_id = int(input())
+            provider = check_provider_id(cur, provider_id)
+        else:
+            print(f"Поставщик с таким id - {provider}")
+        print("Введите название товара")
+        productname = input()
+        print("Введите цену товара в целочисленном или вещественном формате с двумя знаками после запятой")
+        while True:
+            try:
+                price = float(input())
+                if price >= 0:
+                    break
+                else:
+                    print("Цена должна быть больше или равна 0")
+            except ValueError:
+                print("Неправильный тип данных. Повторите ввод")
+        print("Введите кол-во товара на складе (>=0)")
+        while True:
+            try:
+                quantity_in_stock = int(input())
+                if quantity_in_stock >= 0:
+                    break
+                else:
+                    print("Введите кол-во товара на складе (>=0)")
+                    continue
+            except ValueError:
+                print("Неправильный тип данных. Повторите ввод")
+        return (provider_id, productname, price, quantity_in_stock)
+    elif table == 2:
+        print("Введите имя поставщика")
+        providername = str(input())
+        return (providername, 0, 0, 0)
+
+def create_data(new_data, table, cur):
+    if table == 1:
+        try:
+            cur.execute('''
+            INSERT INTO PRODUCTS (IDPROVIDER, PRODUCTNAME, PRICE, QUANTITY_IN_STOCK)
+            VALUES (%s, %s, %s, %s)
+            RETURNING IDPRODUCT
+            ''', (new_data[0], new_data[1], new_data[2], new_data[3]))
+            new_id = cur.fetchone()[0] 
+            conn.commit()
+            return (True, new_id, "Добавление данных прошло успешно.") 
+        except Exception as e:
+            conn.rollback()
+            return (False, -1, "Ошибка при добавлении данных: " + str(e))
+    elif table == 2:
+        try:
+            cur.execute('''
+            INSERT INTO PROVIDERS (PROVIDERNAME)
+            VALUES (%s)
+            RETURNING IDPROVIDER
+            ''', (new_data[0],))
+            new_id = cur.fetchone()[0] 
+            conn.commit()
+            return (True, new_id, "Добавление данных прошло успешно.")
+        except Exception as e:
+            conn.rollback()
+            return (False, -1, "Ошибка при добавлении данных: " + str(e))
+
+
+def show_created_data(new_id, table, cur):
+    if table == 1:
+        cur.execute('''
+        SELECT
+        IDPRODUCT,
+	PRODUCTNAME,
+	PRICE,
+	QUANTITY_IN_STOCK,
+	PROVIDERNAME
+        FROM
+	PRODUCTS
+	LEFT JOIN PROVIDERS ON PRODUCTS.IDPROVIDER = PROVIDERS.IDPROVIDER
+        WHERE IDPRODUCT = %s
+        ''', (new_id,))
+    if table == 2:
+        cur.execute('''
+        SELECT *
+        FROM
+	PROVIDERS
+        WHERE IDPROVIDER = %s
+        ''', (new_id,))
+    return cur.fetchall(), [desc[0] for desc in cur.description]
+
+def check_provider_id(cur, provider_id):
+    cur.execute('''
+        SELECT PROVIDERNAME 
+        FROM PROVIDERS 
+        WHERE IDPROVIDER = %s
+        ''', (provider_id,))
+    return cur.fetchone()
+
+def check_product_id(cur, product_id):
+    cur.execute('''
+        SELECT PRODUCTNAME
+        FROM PRODUCTS 
+        WHERE IDPRODUCT = %s
+        ''', (product_id,))
+    return cur.fetchone()
+
+def preupdate_data(table, cur):
+    if table == 1:
+        print("Введите id товара, который необходимо изменить")
+        product_id = int(input())
+        product = check_product_id(cur, product_id)
+        while product == None:
+            print("Товара с таким id не существует. Введите другой id")
+            product_id = int(input())
+            product = check_product_id(cur, product_id)
+        else:
+            updated_id = product_id
+        print("Запись до изменения:")
+        data, headers = show_created_data(updated_id, table, cur)
+        display_data(data, headers)
+        print("Выберите столбец для обновления (в ответ введите ТОЛЬКО одно число из чисел (1, 2, 3, 4, 5):")
+        print("1) providername (имя поставщика, обновление по id поставщика)")
+        print("2) price (цена)")
+        print("3) productName (наименование продукта)")
+        print("4) quantity_in_stock (количество на складе)")
+        column_number = int(input())
+        while column_number not in [1, 2, 3, 4, 5]:
+            print("В ответ введите ТОЛЬКО одно число из чисел (1, 2, 3, 4, 5):")
+            column_number = int(input())
+        if column_number == 1:
+            print("Введите новое id поставщика")
+            provider_id = int(input())
+            provider = check_provider_id(cur, provider_id)
+            while provider == None:
+                print("Поставщика с таким id не существует. Введите другой id")
+                provider_id = int(input())
+                provider = check_provider_id(cur, provider_id)
+            else:
+                print(f"Поставщик с таким id - {provider}")
+            new_data = provider
+        elif column_number == 2:
+            print("Введите новую цену товара в целочисленном или вещественном формате с двумя знаками после запятой")
+            while True:
+                try:
+                    new_data = float(input())
+                    if new_data >= 0:
+                        break
+                    else:
+                        print("Цена должна быть больше или равна 0")
+                except ValueError:
+                    print("Неправильный тип данных. Повторите ввод")
+        elif column_number == 3:
+            print("Введите новое наименование товара:")
+            new_data = input()
+        else:
+            print("Введите новое кол-во товара на складе (>=0)")
+            while True:
+                try:
+                    new_data = int(input())
+                    if new_data >= 0:
+                        break
+                    else:
+                        print("Введите новое кол-во товара на складе (>=0)")
+                        continue
+                except ValueError:
+                    print("Неправильный тип данных. Повторите ввод")
+    elif table == 2:
+        print("Введите id поставщика, который необходимо изменить")
+        provider_id = int(input())
+        provider = check_provider_id(cur, provider_id)
+        while provider == None:
+            print("Поставщика с таким id не существует. Введите другой id")
+            provider_id = int(input())
+            provider = check_provider_id(cur, provider_id)
+        else:
+            updated_id = provider_id
+        print("Запись до изменения:")
+        data, headers = show_created_data(updated_id, table, cur)
+        display_data(data, headers)
+        print("Введите новое наименование поставщика:")
+        new_data = input()
+        column_number = 1
+    return (updated_id, column_number, new_data)
+
+def update_data(updated_id, column_number, new_data, table, cur):
+    if table == 1:
+        column_mapping = {
+        1: "IDPROVIDER",
+        2: "PRICE",
+        3: "PRODUCTNAME",
+        4: "QUANTITY_IN_STOCK"
+        }
+        column_name = column_mapping[column_number]
+        query = f"UPDATE PRODUCTS SET {column_name} = %s WHERE IDPRODUCT = %s"
+    elif table == 2:
+        query = "UPDATE PROVIDERS SET PROVIDERNAME = %s WHERE IDPROVIDER = %s"
+    cur.execute(query, (new_data, updated_id))
+    conn.commit()
+
+def predelete_data(table, cur):
+    if table == 1:
+        print("Введите id товара для удаления:")
+        product_id = int(input())
+        product = check_product_id(cur, product_id)
+        while product == None:
+            print("Товара с таким id не существует. Введите другой id")
+            product_id = int(input())
+            product = check_product_id(cur, product_id)
+        else:
+            deleted_id = product_id
+    elif table == 2:
+        print("Введите id поставщика для удаления:")
+        provider_id = int(input())
+        provider = check_provider_id(cur, provider_id)
+        while provider == None:
+            print("Поставщика с таким id не существует. Введите другой id")
+            provider_id = int(input())
+            provider = check_provider_id(cur, provider_id)
+        else:
+            deleted_id = provider_id
+    return deleted_id
+
+def delete_data(deleted_id, table, cur):
+    if table == 1:
+        query = f"DELETE FROM PRODUCTS WHERE IDPRODUCT = %s"
+    else:
+        query = f"DELETE FROM PROVIDERS WHERE IDPROVIDER = %s"
+    cur.execute(query, (deleted_id,))
+    conn.commit()
+        
+def display_data(data, headers):
+    table = PrettyTable()
+    table.field_names = headers
+    table.align = "l"
+    for row in data:
+        formatted_row = [
+            str(item) if item is not None else 'NULL' 
+            for item in row
+        ]
+        table.add_row(formatted_row)
+    print(table)
+
+def check_customer_id(cur, customer_id):
+    cur.execute('''
+        SELECT FULLNAME
+        FROM CUSTOMERS 
+        WHERE IDCUSTOMER = %s
+        ''', (customer_id,))
+    return cur.fetchone()
+
+def preanalytical_query(query_num, cur):
+    if query_num == 1:
+        print("Введите ценовой диапазон товаров. Сначала введите меньшее число:")
+        while True:
+            try:
+                min_price = float(input())
+                if min_price >= 0:
+                    break
+                else:
+                    print("Цена должна быть больше или равна 0")
+            except ValueError:
+                print("Неправильный тип данных. Повторите ввод")
+        print("Теперь введите бОльшее число:")
+        while True:
+            try:
+                max_price = float(input())
+                if max_price >= 0 and max_price >= min_price:
+                    break
+                else:
+                    print("Цена должна быть больше или равна 0 и больше первой границы")
+            except ValueError:
+                print("Неправильный тип данных. Повторите ввод")
+        print("Выберите ограничение вывода (не менее 1, но не более 100)");
+        while True:
+            try:
+                limit = int(input())
+                if 1 <= limit <= 100:
+                    break
+                else:
+                    print("(не менее 1, но не более 100)")
+            except ValueError:
+                print("Неправильный тип данных. Повторите ввод")
+        print("Выберите тип сортировки по цене:")
+        print("1) по возрастанию")
+        print("2) по убыванию")
+        print("В ответ введите ТОЛЬКО число 1 или 2")
+        sort_type = int(input())
+        while sort_type not in [1, 2]:
+            print("В ответ введите ТОЛЬКО число 1 или 2")
+            sort_type = int(input())
+        return [min_price, max_price, limit, sort_type]
+    elif query_num == 2:
+        print("Введите id покупателя:")
+        customer_id = int(input())
+        fullname = check_customer_id(cur, customer_id)
+        while fullname == None:
+            print("Покупателя с таким id не существует. Введите другой id")
+            customer_id = int(input())
+            fullname = check_customer_id(cur, customer_id)
+        print(f"Имя покупателя: {fullname[0]}")
+        return [customer_id]
+
+def analytical_query(params, query_num, cur):
+    if query_num == 1:
+        min_price, max_price, limit, sort_type = params[0], params[1], params[2], params[3]
+        if sort_type == 1:
+            sorting = "ASC"
+        else:
+            sorting = "DESC"
+        query = f'''SELECT PRODUCTNAME, PRICE, QUANTITY_IN_STOCK, PROVIDERNAME
+                FROM PRODUCTS JOIN PROVIDERS ON PRODUCTS.IDPROVIDER = PROVIDERS.IDPROVIDER
+                WHERE PRICE BETWEEN %s AND %s
+                ORDER BY PRICE {sorting}
+                LIMIT %s;'''
+        cur.execute(query, (min_price, max_price, limit))
+    elif query_num == 2:
+        customer_id = params[0]
+        query = f'''SELECT P.PRODUCTNAME, OP.QUANTITY, P.PRICE, (OP.QUANTITY * P.PRICE) AS TOTAL_COST
+                FROM ORDERS O
+                JOIN ORDERS_PRODUCTS OP ON O.IDORDER = OP.IDORDER
+                JOIN PRODUCTS P ON OP.IDPRODUCT = P.IDPRODUCT
+                WHERE O.IDCUSTOMER = %s;
+                '''
+        cur.execute(query, (customer_id,))
+    return (cur.fetchall(), [desc[0] for desc in cur.description])
+
+# Подключение к базе данных postgres
+conn = psycopg2.connect(
+dbname="kidshop",
+user="postgres",
+password="22112003",
+host="localhost",
+port="5432"
+)
+cur = conn.cursor()
+while True:
+    try:
+        mode, table = choose_mode_and_table()
+        if mode == 0:
+            confirm = input("Вы уверены, что хотите выйти? (y/n): ").lower()
+            if confirm == "y":
+                print("Выход из программы.")
+                break
+        if mode == 1:
+            data, headers = read_data(table, cur)
+            table = display_data(data[:10], headers)
+        elif mode == 2:
+            new_data = precreate_data(table, cur)
+            flag, new_id, message = create_data(new_data, table, cur)
+            print(message)
+            if flag:
+                print("Добавленные данные:")
+                data, headers = show_created_data(new_id, table, cur)
+                table = display_data(data, headers)
+        elif mode == 3:
+            updated_id, column_number, new_data = preupdate_data(table, cur)
+            update_data(updated_id, column_number, new_data, table, cur)
+            print("Запись после изменения:")
+            data, headers = show_created_data(updated_id, table, cur)
+            table = display_data(data, headers)
+        elif mode == 4:
+            deleted_id = predelete_data(table, cur)
+            print("Удаляемая запись:")
+            data, headers = show_created_data(deleted_id, table, cur)
+            table = display_data(data, headers)
+            confirm = input("Подтвердите удаление (y/n): ").lower()
+            if confirm == "y":
+                delete_data(deleted_id, table, cur)
+                print("Запись успешно удалена!")
+            else:
+                print("Удаление отменено.")
+        elif mode == 5:
+            params = preanalytical_query(table, cur)
+            data, headers = analytical_query(params, table, cur)
+            table = display_data(data, headers)
+            
+    except Exception as e:
+        print(f"Произошла ошибка: {e}")
+
+# Закрытие курсора и соединения
+cur.close()
+conn.close()
