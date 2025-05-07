@@ -1,0 +1,109 @@
+DROP TABLE IF EXISTS Providers CASCADE;
+DROP TABLE IF EXISTS Porders CASCADE;
+DROP TABLE IF EXISTS Orders CASCADE;
+DROP TABLE IF EXISTS Toys CASCADE;
+DROP TABLE IF EXISTS SportProducts CASCADE;
+DROP TABLE IF EXISTS Stationery CASCADE;
+DROP TABLE IF EXISTS Clothes CASCADE;
+DROP TABLE IF EXISTS Orders_products CASCADE;
+DROP TABLE IF EXISTS Products CASCADE;
+DROP TABLE IF EXISTS Managers CASCADE;
+DROP TABLE IF EXISTS Sellers CASCADE;
+DROP TABLE IF EXISTS Customers CASCADE;
+
+CREATE TABLE IF NOT EXISTS Providers (
+    idProvider SERIAL PRIMARY KEY,
+    providerName VARCHAR(100) NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS Products (
+    idProduct SERIAL PRIMARY KEY,
+    idProvider INT, -- Добавлен внешний ключ
+    price NUMERIC(10,2), -- FLOAT заменен на NUMERIC для точности
+    productName VARCHAR(100) NOT NULL,
+	quantity_in_stock INT,
+    FOREIGN KEY (idProvider) REFERENCES Providers (idProvider) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS Managers (
+    idManager SERIAL PRIMARY KEY,
+    fullname VARCHAR(100) NOT NULL,
+    salary NUMERIC(10,2), -- DOUBLE заменен на NUMERIC
+    passportData VARCHAR(100) UNIQUE NOT NULL -- Добавлено ограничение UNIQUE
+);
+
+CREATE TABLE IF NOT EXISTS Porders (
+    idPorder SERIAL PRIMARY KEY,
+    idProvider INT, -- Добавлен внешний ключ
+    idManager INT, -- Добавлен внешний ключ
+    status VARCHAR(100) NOT NULL,
+    date TIMESTAMPTZ, -- DATETIME заменен на TIMESTAMP
+    deliveryService VARCHAR(100) NOT NULL,
+    FOREIGN KEY (idProvider) REFERENCES Providers (idProvider) ON DELETE SET NULL,
+    FOREIGN KEY (idManager) REFERENCES Managers (idManager) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS Sellers (
+    idSeller SERIAL PRIMARY KEY,
+    idManager INT, -- Добавлен внешний ключ
+    fullname VARCHAR(100) NOT NULL,
+    salary NUMERIC(10,2),
+    passportData VARCHAR(100) UNIQUE NOT NULL,
+    FOREIGN KEY (idManager) REFERENCES Managers (idManager) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS Customers (
+    idCustomer SERIAL PRIMARY KEY,
+    fullname VARCHAR(100) NOT NULL,
+    address VARCHAR(100) NOT NULL,
+    e_mail VARCHAR(100) UNIQUE NOT NULL, -- Ограничение UNIQUE на email
+    phoneNumber VARCHAR(100) UNIQUE NOT NULL -- Ограничение UNIQUE на телефон
+);
+
+CREATE TABLE IF NOT EXISTS Orders (
+    idOrder SERIAL PRIMARY KEY,
+    idSeller INT, -- Добавлен внешний ключ
+    idCustomer INT, -- Добавлен внешний ключ
+    date TIMESTAMPTZ NOT NULL, -- DATETIME заменен на TIMESTAMP
+    status VARCHAR(100) NOT NULL,
+    FOREIGN KEY (idSeller) REFERENCES Sellers (idSeller) ON DELETE SET NULL,
+    FOREIGN KEY (idCustomer) REFERENCES Customers (idCustomer) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS Orders_products (
+    idProduct INT,
+    idOrder INT,
+    quantity INT CHECK (quantity > 0),
+    FOREIGN KEY (idProduct) REFERENCES Products (idProduct) ON DELETE SET NULL,
+    FOREIGN KEY (idOrder) REFERENCES Orders (idOrder) ON DELETE SET NULL,
+	PRIMARY KEY (idOrder, IdProduct)
+);
+
+CREATE TABLE IF NOT EXISTS Toys (
+    idProduct INT PRIMARY KEY, -- Добавлен внешний ключ
+    ageCategory VARCHAR(100) NOT NULL,
+    educational VARCHAR(100) NOT NULL,
+    FOREIGN KEY (idProduct) REFERENCES Products (idProduct) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS SportProducts (
+    idProduct INT PRIMARY KEY, -- Добавлен внешний ключ
+    ageCategory VARCHAR(100) NOT NULL,
+    sportType VARCHAR(100) NOT NULL,
+    FOREIGN KEY (idProduct) REFERENCES Products (idProduct) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS Stationery (
+    idProduct INT PRIMARY KEY, -- Добавлен внешний ключ
+    category VARCHAR(100) NOT NULL,
+    FOREIGN KEY (idProduct) REFERENCES Products (idProduct) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS Clothes (
+    idProduct INT PRIMARY KEY, -- Добавлен внешний ключ
+    ageCategory VARCHAR(100) NOT NULL,
+    gender VARCHAR(100) NOT NULL,
+    sizes VARCHAR(100) NOT NULL,
+    FOREIGN KEY (idProduct) REFERENCES Products (idProduct) ON DELETE SET NULL
+);
+
